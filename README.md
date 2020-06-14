@@ -1,4 +1,4 @@
 # kernel-chinese-translation
-kernel document chinese translation
-# kernel文档中文翻译
+翻译kernel文档<br>
+translate kernel documentations to Chinese<br>
 https://www.kernel.org/doc/Documentation/
