@@ -1,7 +1,7 @@
 # 平台设备
-平台设备是一种设备，其在系统中通常作为自主的实体出现。这包括传统的基于端口的设备和连接外围总线的主机桥，以及集成在SOC的大多数控制器。它们通常的共同点是直接从CPU总线寻址。少数情况下，一个平台设备、会通过其他某种总线的一段连接；但它的寄存器仍然可以直接寻址。
+平台设备是一种设备，其在系统中通常作为自主的实体出现。它包括传统的基于端口(IO)的设备和连接外围总线的主机桥，以及集成在SOC的大多数控制器。它们通常的共同点是直接从CPU总线寻址。少数情况下，一个平台设备、会通过其他某种总线的一段连接；但它的寄存器仍然可以直接寻址。
 
-平台设备被赋予一个名称，用于驱动绑定，以及一个资源列表，如地址和IRQ。
+平台设备被赋予一个名称，用于驱动绑定，以及一个资源列表，如地址和IRQ:
 ```
 struct platform_device {
       const char      *name;
@@ -29,7 +29,7 @@ struct platform_driver {
 ```
 int platform_driver_register(struct platform_driver *drv);
 ```
-或者，在设备已知切不可热插拔的常见情况下，probe()例程可以放在init部分中，以减少驱动程序的运行时内存占用。
+或者，在设备已知不可热插拔的常见情况下，probe()例程可以放在init部分中，以减少驱动程序的运行时内存占用。
 ```
 int platform_driver_probe(struct platform_driver *drv,int (*probe)(struct platform_device *))
 ```
@@ -46,7 +46,7 @@ void platform_unregister_drivers(struct platform_driver * const *drivers,
 ```
 # 设备枚举
 
-作为一个规则，平台特定(通常是特定于板子)的配置代码会注册平台设备。
+作为一个规则，特定于平台(通常是特定于板子)的setup代码会注册平台设备。
 ```
 int platform_device_register(struct platform_device *pdev);
 
@@ -54,7 +54,7 @@ int platform_add_devices(struct platform_device **pdevs, int ndev);
 ```
 通常的规则是仅仅注册那些确实存在的设备，但是在一些情况下额外的设备也会被注册。举个例子，kernel可能被配置用来与外置网络适配器一起工作，这个适配器可能不在板子上。或者kernel可能被配置用来与一个集成控制器(外部的一个板子)一起工作，而板子本身没有连接任何外设。
 
-在一些情况下，引导固件会导出一个描述给定板子上有哪些设备的表格。如果没有这个表格，那么通常系统配置代码设置正确设备的唯一方式是为特定的板子build一个kernel。这样的特定与板子的内核在嵌入式和定制系统开发中很常见。
+在一些情况下，引导固件会导出一个描述给定板子上有哪些设备的表格。如果没有这个表格，那么通常系统setup代码设置正确设备的唯一方式是为特定的板子build一个kernel。这样的特定与板子的内核在嵌入式和定制系统开发中很常见。
 
 在许多情况下，与平台设备相关的内存和IRQ资源不足以让设备的驱动程序工作。板子的配置代码通常会使用设备platform_data字段提供附加的信息。
 
