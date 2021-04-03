@@ -75,38 +75,42 @@ int driver_for_each_dev(struct device_driver *drv, void *data,
 
 # 回调函数
 
-- int (*probe) (struct device *dev)
-       probe()是在任务上下文中被调用的，伴随着bus的rwsem锁定以及驱动程序绑定到设备上。驱动通常使用container_of()来将“dev"转化到特定于bus的类型，在probe()和其他方法中都是如此。这些特定于bus的"dev"通常提供设备的resource data，例如pci_dev.resource[]或platform_device.resources，除了dev->platform_data之外，这些resource data也被用来初始化驱动。
+- int (probe) (struct device dev)  
+  
+  probe()是在任务上下文中被调用的，伴随着bus的rwsem锁定以及驱动程序绑定到设备上。驱动通常使用container_of()来将“dev"转化到特定于bus的类型，在probe()和其他方法中都是如此。这些特定于bus的"dev"通常提供设备的resource data，例如pci_dev.resource[]或platform_device.resources，除了dev->platform_data之外，这些resource data也被用来初始化驱动。  
+       
+  这个驱动回调函数包含特定于驱动的逻辑，用于将驱动程序绑定到给定设备。这些逻辑包含验证设备是否存在，是否是驱动可以处理版本，驱动的数据结构能否被分配和初始化，以及硬件能否被初始化。驱动通常储存一个指向它们状态的指针，通过使用dev_set_drvdata()。当驱动成功绑定其自身到设备时，probe()会返回0并且驱动程序模型代码将完成其绑定驱动程序到该设备上的部分.  
 
-       这个驱动回调函数包含特定于驱动的逻辑，用于将驱动程序绑定到给定设备。这些逻辑包含验证设备是否存在，是否是驱动可以处理版本，驱动的数据结构能否被分配和初始化，以及硬件能否被初始化。驱动通常储存一个指向它们状态的指针，通过使用dev_set_drvdata()。当驱动成功绑定其自身到设备时，probe()会返回0并且驱动程序模型代码将完成其绑定驱动程序到该设备上的部分.
-
-       驱动程序的probe()可能会返回一个负的errno值，表示驱动程序没有绑定到这个设备，在这种情况下，它应该释放它分配的所有资源。
+  驱动程序的probe()可能会返回一个负的errno值，表示驱动程序没有绑定到这个设备，在这种情况下，它应该释放它分配的所有资源。
 
 
-- void (*sync_state)(struct device *dev)
-       sync_state()对于一个设备只能被调用一次。当驱动的所有消费者设备已经被probe的时候这个方法被调用。设备的消费者列表是通过查找连接该设备与其消费设备的链接，获得的。
+- void (*sync_state)(struct device *dev)  
+  
+  sync_state()对于一个设备只能被调用一次。当驱动的所有消费者设备已经被probe的时候这个方法被调用。设备的消费者列表是通过查找连接该设备与其消费设备的链接，获得的。  
+         
+  第一次尝试调用sync_state()是在late_initcall_sync()期间发生的，以使固件和驱动程序有时间相互链接设备。在第一次尝试调用sync_state()期间，如果所有设备的消费者在此时都已经probe成功了，sync_state()马上被调用。如果在第一次尝试期间，不存在设备消费者，这也被认为是“所有的设备消费者已经被probe”，并且sync_state()也会被立马调用。  
 
-       第一次尝试调用sync_state()是在late_initcall_sync()期间发生的，以使固件和驱动程序有时间相互链接设备。在第一次尝试调用sync_state()期间，如果所有设备的消费者在此时都已经probe成功了，sync_state()马上被调用。如果在第一次尝试期间，不存在设备消费者，这也被认为是“所有的设备消费者已经被probe”，并且sync_state()也会被立马调用。
+  如果在首次尝试为设备调用sync_state()时，还要消费者没有probe成功，sync_state()调用会被延迟，只有在一个或多个消费者probe成功时才会重新尝试。当驱动核心发现一个或多个消费者还没有被probe时，sync_state()调用会再次被延迟。  
 
-       如果在首次尝试为设备调用sync_state()时，还要消费者没有probe成功，sync_state()调用会被延迟，只有在一个或多个消费者probe成功时才会重新尝试。当驱动核心发现一个或多个消费者还没有被probe时，sync_state()调用会再次被延迟。
+  一个 sync_state()的典型用例是，让内核干净利落地从bootloader中接管设备的管理。举个例子，如果一个设备被bootloader配置为一个特定的硬件配置，那么设备的驱动可能需要保持这个配置，直到所有的消费者设备都被已经probe了。一旦所有的消费者设备都被probe了，设备的驱动可以同步设备的硬件状态，以匹配所有设备请求的软件状态。所以叫sync_state()。  
+  
+  举个明显的例子，包括regulator之类的resource可以从sync_state()中受益。sync_state()同样对复杂的resource很有用，比如IOMMUs。举个例子，IOMMUs包含多个消费者(设备,其地址由IOMMU重新映射)可能需要保持它们的映射固定在启动配置上，直到所有消费者都已经probe了。  
 
-       一个 sync_state()的典型用例是，让内核干净利落地从bootloader中接管设备的管理。举个例子，如果一个设备被bootloader配置为一个特定的硬件配置，那么设备的驱动可能需要保持这个配置，直到所有的消费者设备都被已经probe了。一旦所有的消费者设备都被probe了，设备的驱动可以同步设备的硬件状态，以匹配所有设备请求的软件状态。所以叫sync_state()。
+  虽然sync_state()的典型用例是，让内核干净利落地从bootloader中接管设备的管理，但是sync_state()的用法不限于此。在任何需要在所有消费者probe之后采取有意义的动作时，都可以使用这个方法。
 
-       举个明显的例子，包括regulator之类的resource可以从sync_state()中受益。sync_state()同样对复杂的resource很有用，比如IOMMUs。举个例子，IOMMUs包含多个消费者(设备,其地址由IOMMU重新映射)可能需要保持它们的映射固定在启动配置上，直到所有消费者都已经probe了。
+- int (*remove) (struct device *dev)  
+  
+  remove被调用来解除驱动与设备的绑定。在设备被从系统上物理移除、驱动模块被卸载、在重启期间，或是其他情况下，这个方法都可能被调用。  
+  由驱动决定设备是否存在。这个方法需要释放为这个设备特别分配的任何资源。比如，driver_data字段中的所有东西。  
+  如果设备还存在，应该静默设备，并将其置于低功耗状态。
 
-       虽然sync_state()的典型用例是，让内核干净利落地从bootloader中接管设备的管理，但是sync_state()的用法不限于此。在任何需要在所有消费者probe之后采取有意义的动作时，都可以使用这个方法。
+- int (*suspend) (struct device *dev, pm_message_t state)  
 
-- int (*remove) (struct device *dev); 
-       remove被调用来解除驱动与设备的绑定。在设备被从系统上物理移除、驱动模块被卸载、在重启期间，或是其他情况下，这个方法都可能被调用。
+  suspend被调用来使设备置于低功耗状态
 
-       由驱动决定设备是否存在。这个方法需要释放为这个设备特别分配的任何资源。比如，driver_data字段中的所有东西。
-       如果设备还存在，应该静默设备，并将其置于低功耗状态。
+- int (*resume) (struct device *dev)  
 
-- int (*suspend) (struct device *dev, pm_message_t state)
-       suspend被调用来使设备置于低功耗状态
-
-- int (*resume) (struct device *dev)
-       resume用于使设备从低功耗状态恢复。
+  resume用于使设备从低功耗状态恢复。
 
 # 属性
 ```
